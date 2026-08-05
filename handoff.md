@@ -8,6 +8,7 @@ PI 插件文档：https://pi.dev/docs/latest/extensions
 
 - 首次 `agent_start` 开始计时。
 - 后续自动重试或压缩恢复触发的 `agent_start` 不会重置计时。
+- 回答过程中底部状态栏持续显示已用时长，每 100ms 刷新一次，格式为 `⏱ 回答计时中 12.3s`，让用户实时看到当前回答已耗时多久。
 - `agent_settled` 结束计时，因此耗时包含模型响应、工具调用、自动重试和压缩恢复。
 - 通过 `tool_execution_start` / `tool_execution_end` 统计工具调用次数和工具占用总耗时。
 - 并行工具调用的重叠时间不会重复累计，保证各项耗时可以直观对比。

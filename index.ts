@@ -3,11 +3,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const STATUS_ID = "ai-response-time";
 
-function formatDuration(milliseconds: number): string {
+function formatDuration(milliseconds: number, secondsInteger = false): string {
 	if (milliseconds < 1000) return `${Math.round(milliseconds)}ms`;
 
 	const totalSeconds = milliseconds / 1000;
-	if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+	if (totalSeconds < 60) {
+		return secondsInteger ? `${Math.round(totalSeconds)}s` : `${totalSeconds.toFixed(1)}s`;
+	}
 
 	const minutes = Math.floor(totalSeconds / 60);
 	const seconds = Math.floor(totalSeconds % 60);
@@ -19,6 +21,8 @@ export default function (pi: ExtensionAPI) {
 	let toolPhaseStartedAt: number | undefined;
 	let toolDurationMs = 0;
 	let toolCallCount = 0;
+	// 回答过程中持续刷新“回答计时中”已用时长的定时器，agent_settled/session_shutdown 时清理。
+	let statusTimer: ReturnType<typeof setInterval> | undefined;
 	const activeToolCallIds = new Set<string>();
 
 	const resetTiming = () => {
@@ -27,6 +31,10 @@ export default function (pi: ExtensionAPI) {
 		toolDurationMs = 0;
 		toolCallCount = 0;
 		activeToolCallIds.clear();
+		if (statusTimer !== undefined) {
+			clearInterval(statusTimer);
+			statusTimer = undefined;
+		}
 	};
 
 	pi.on("agent_start", (_event, ctx) => {
@@ -35,7 +43,12 @@ export default function (pi: ExtensionAPI) {
 
 		resetTiming();
 		responseStartedAt = performance.now();
-		ctx.ui.setStatus(STATUS_ID, ctx.ui.theme.fg("dim", "⏱ 回答计时中"));
+		// 回答过程中持续刷新已用时长，agent_settled 时停止并替换为最终汇总。
+		statusTimer = setInterval(() => {
+			if (responseStartedAt === undefined) return;
+			const elapsed = performance.now() - responseStartedAt;
+			ctx.ui.setStatus(STATUS_ID, ctx.ui.theme.fg("dim", `⏱ 回答计时中 ${formatDuration(elapsed, true)}`));
+		}, 100);
 	});
 
 	pi.on("tool_execution_start", (event) => {
