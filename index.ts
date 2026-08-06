@@ -21,6 +21,7 @@ export default function (pi: ExtensionAPI) {
 	let toolPhaseStartedAt: number | undefined;
 	let toolDurationMs = 0;
 	let toolCallCount = 0;
+	let questionPreview = "";
 	// 回答过程中持续刷新“回答计时中”已用时长的定时器，agent_settled/session_shutdown 时清理。
 	let statusTimer: ReturnType<typeof setInterval> | undefined;
 	const activeToolCallIds = new Set<string>();
@@ -37,6 +38,12 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
+	pi.on("before_agent_start", (event) => {
+		const questionCharacters = Array.from(event.prompt.replace(/\s+/g, " ").trim());
+		questionPreview = questionCharacters.slice(0, 10).join("");
+		if (questionCharacters.length > 10) questionPreview += "...";
+	});
+
 	pi.on("agent_start", (_event, ctx) => {
 		// 自动重试或压缩恢复可能再次触发 agent_start，保留首次开始时间才能得到总耗时。
 		if (responseStartedAt !== undefined) return;
@@ -47,7 +54,11 @@ export default function (pi: ExtensionAPI) {
 		statusTimer = setInterval(() => {
 			if (responseStartedAt === undefined) return;
 			const elapsed = performance.now() - responseStartedAt;
-			ctx.ui.setStatus(STATUS_ID, ctx.ui.theme.fg("dim", `⏱ 回答计时中 ${formatDuration(elapsed, true)}`));
+			const previewStatus = questionPreview ? ` ${questionPreview} ·` : "";
+			ctx.ui.setStatus(
+				STATUS_ID,
+				ctx.ui.theme.fg("dim", `⏱ 回答计时中${previewStatus} ${formatDuration(elapsed, true)}`),
+			);
 		}, 100);
 	});
 
