@@ -21,6 +21,7 @@ export default function (pi: ExtensionAPI) {
 	let toolPhaseStartedAt: number | undefined;
 	let toolDurationMs = 0;
 	let toolCallCount = 0;
+	let outputTokens = 0;
 	let questionPreview = "";
 	// 回答过程中持续刷新“回答计时中”已用时长的定时器，agent_settled/session_shutdown 时清理。
 	let statusTimer: ReturnType<typeof setInterval> | undefined;
@@ -31,6 +32,7 @@ export default function (pi: ExtensionAPI) {
 		toolPhaseStartedAt = undefined;
 		toolDurationMs = 0;
 		toolCallCount = 0;
+		outputTokens = 0;
 		activeToolCallIds.clear();
 		if (statusTimer !== undefined) {
 			clearInterval(statusTimer);
@@ -80,6 +82,13 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
+	pi.on("message_end", (event) => {
+		if (responseStartedAt === undefined || event.message.role !== "assistant") return;
+
+		const tokens = event.message.usage?.output;
+		if (Number.isFinite(tokens) && tokens > 0) outputTokens += tokens;
+	});
+
 	pi.on("agent_settled", (_event, ctx) => {
 		if (responseStartedAt === undefined) return;
 
@@ -94,7 +103,11 @@ export default function (pi: ExtensionAPI) {
 		const totalDuration = formatDuration(totalDurationMs);
 		const toolDuration = formatDuration(toolDurationMs);
 		const thinkingDuration = formatDuration(thinkingDurationMs);
-		const summary = `总耗时 ${totalDuration} · 工具(${toolCallCount}) ${toolDuration} · 思考 ${thinkingDuration}`;
+		// 平均输出速度包含请求等待/重试等非工具开销，并非模型纯生成速度。
+		const tokenSpeed = outputTokens > 0 && thinkingDurationMs > 0
+			? `${(outputTokens * 1000 / thinkingDurationMs).toFixed(1)} tok/s`
+			: "—";
+		const summary = `总耗时 ${totalDuration} · 工具(${toolCallCount}) ${toolDuration} · 思考 ${thinkingDuration} · Token 速度 ${tokenSpeed}`;
 
 		resetTiming();
 		ctx.ui.setStatus(STATUS_ID, ctx.ui.theme.fg("dim", `⏱ ${summary}`));
